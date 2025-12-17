@@ -1,6 +1,7 @@
 package com.example.gpswaypointing
 
 import android.Manifest
+import android.content.Context // REQUIRED for file modes
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -22,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import com.example.gpswaypointing.ui.theme.GPSWaypointingTheme
 import androidx.compose.runtime.mutableStateListOf
+import java.io.File // REQUIRED for file operations
+import java.io.IOException // REQUIRED for error handling
 
 class MainActivity : ComponentActivity(), SensorEventListener, LocationListener {
 
@@ -35,6 +38,9 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
 
     // List to store saved waypoints
     private val waypoints = mutableListOf<Waypoint>()
+
+    // Name of the file to save data to
+    private val FILENAME = "waypoints.txt"
 
     // Permission launcher to ask user for GPS access
     private val locationPermissionRequest = registerForActivityResult(
@@ -59,6 +65,9 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         // Initialize Managers
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+
+        // --- TASK 8: Load saved waypoints when app starts ---
+        loadWaypointsFromFile()
 
         setContent {
             GPSWaypointingTheme {
@@ -86,7 +95,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         }
     }
 
-    // --- NEW FUNCTION for Task 7 ---
+    // --- FUNCTION for Task 7 & 8 ---
     private fun addWaypoint() {
         val location = currentLocation
         if (location != null) {
@@ -96,9 +105,56 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                 longitude = location.longitude
             )
             waypoints.add(newWaypoint)
+
+            // --- TASK 8 UPDATE: Save immediately to file ---
+            saveWaypointsToFile()
+
             Log.d("GPS_APP", "Waypoint Added: $newWaypoint")
         } else {
             Log.d("GPS_APP", "Cannot add waypoint: No location data yet.")
+        }
+    }
+
+    // --- TASK 8: FILE I/O FUNCTIONS ---
+
+    private fun saveWaypointsToFile() {
+        try {
+            // Write each waypoint as a line: "id,lat,long"
+            val fileContent = StringBuilder()
+            for (wp in waypoints) {
+                fileContent.append("${wp.id},${wp.latitude},${wp.longitude}\n")
+            }
+
+            openFileOutput(FILENAME, Context.MODE_PRIVATE).use {
+                it.write(fileContent.toString().toByteArray())
+            }
+            Log.d("GPS_APP", "Saved ${waypoints.size} waypoints to $FILENAME")
+        } catch (e: IOException) {
+            Log.e("GPS_APP", "Error saving file: ${e.message}")
+        }
+    }
+
+    private fun loadWaypointsFromFile() {
+        try {
+            val file = File(filesDir, FILENAME)
+            if (file.exists()) {
+                waypoints.clear()
+                file.forEachLine { line ->
+                    // Parse "id,lat,long"
+                    val parts = line.split(",")
+                    if (parts.size >= 3) {
+                        val id = parts[0].toIntOrNull()
+                        val lat = parts[1].toDoubleOrNull()
+                        val long = parts[2].toDoubleOrNull()
+                        if (id != null && lat != null && long != null) {
+                            waypoints.add(Waypoint(id, lat, long))
+                        }
+                    }
+                }
+                Log.d("GPS_APP", "Loaded ${waypoints.size} waypoints from file")
+            }
+        } catch (e: IOException) {
+            Log.e("GPS_APP", "Error loading file: ${e.message}")
         }
     }
 
