@@ -3,8 +3,11 @@ package com.example.gpswaypointing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,15 +19,18 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 
-// UPDATE: Added 'onAddWaypoint' parameter to the function signature
+// UPDATE: Added 'onClearWaypoints' parameter to the function signature
 @Composable
 fun GPSApplication(
     azimuth: Float,
     onTrackingChanged: (Boolean) -> Unit,
-    onAddWaypoint: () -> Unit // New callback for Task 7
+    onAddWaypoint: () -> Unit,
+    onClearWaypoints: () -> Unit // New callback for Task 9
 ) {
 
     val isTracking = remember { mutableStateOf(false) }
+    // STATE: Controls whether the delete confirmation dialog is shown
+    val showDeleteDialog = remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -46,19 +52,59 @@ fun GPSApplication(
             Text(text = if (isTracking.value) "Stop Tracking" else "Start Tracking")
         }
 
-        // --- NEW TASK 7 CODE STARTS HERE ---
-        // Only show this button if we are currently tracking
+        // Only show these buttons if we are currently tracking
         if (isTracking.value) {
+
+            // TASK 7: Add Waypoint Button
             Button(
                 onClick = {
-                    onAddWaypoint() // Trigger the save logic in MainActivity
+                    onAddWaypoint()
                 },
                 modifier = Modifier.padding(top = 16.dp)
             ) {
                 Text(text = "Add Waypoint")
             }
+
+            // --- NEW TASK 9: Clear Waypoints Button ---
+            Button(
+                onClick = {
+                    // Show dialog instead of deleting immediately
+                    showDeleteDialog.value = true
+                },
+                modifier = Modifier.padding(top = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Red // Red color to indicate destructive action
+                )
+            ) {
+                Text(text = "Clear Waypoints")
+            }
         }
-        // --- NEW TASK 7 CODE ENDS HERE ---
+    }
+
+    // --- NEW TASK 9: Confirmation Dialog ---
+    if (showDeleteDialog.value) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog.value = false },
+            title = { Text(text = "Confirm Delete") },
+            text = { Text(text = "Are you sure you want to delete all saved waypoints?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearWaypoints() // Perform the actual delete
+                        showDeleteDialog.value = false // Close dialog
+                    }
+                ) {
+                    Text("Yes, Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteDialog.value = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
