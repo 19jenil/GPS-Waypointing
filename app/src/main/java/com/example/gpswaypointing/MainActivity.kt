@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     // Currently selected waypoint (Task 10)
     private var selectedWaypoint: Waypoint? = null
 
+    // Task 18: Index of currently selected waypoint in the list
+    private var selectedIndex: Int? = null
+
     // Task 11: relative bearing from user to selected waypoint
     private var waypointRelativeBearing = mutableStateOf<Float?>(null)
 
@@ -113,7 +116,8 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                         },
                         onWaypointSelected = { wp ->
                             selectedWaypoint = wp
-                            Log.d("GPS_APP", "Selected waypoint: $wp")
+                            selectedIndex = waypoints.indexOf(wp)
+                            Log.d("GPS_APP", "Selected waypoint: $wp (index: ${selectedIndex})")
                             updateWaypointBearingAndDistance()   // recompute for this waypoint
                         }
                     )
@@ -122,7 +126,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         }
     }
 
-    // --- TASK 11 & 12: compute bearing and distance to selected waypoint ---
+    // --- TASK 11 & 12 & 18: compute bearing and distance to selected waypoint ---
     private fun updateWaypointBearingAndDistance() {
         val loc = currentLocation
         val wp = selectedWaypoint
@@ -138,13 +142,35 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         }
 
         // Task 12: distance in metres
-        waypointDistanceMeters.value = loc.distanceTo(wpLocation)
+        val distance = loc.distanceTo(wpLocation)
+        waypointDistanceMeters.value = distance
 
-        // Bearing from user to waypoint (may be negative)
-        var bearing = loc.bearingTo(wpLocation)  // degrees from north, clockwise
+        // --- TASK 18: auto-select previous waypoint when within 10 m ---
+        val idx = selectedIndex
+        if (distance <= 10f && idx != null && idx > 0) {
+            val prevWp = waypoints[idx - 1]
+            selectedWaypoint = prevWp
+            selectedIndex = idx - 1
+
+            val prevLoc = Location("waypoint").apply {
+                latitude = prevWp.latitude
+                longitude = prevWp.longitude
+            }
+            val prevDistance = loc.distanceTo(prevLoc)
+            waypointDistanceMeters.value = prevDistance
+
+            var prevBearing = loc.bearingTo(prevLoc)
+            if (prevBearing < 0f) prevBearing += 360f
+            val prevRelative = prevBearing - azimuth.value
+            waypointRelativeBearing.value = ((prevRelative + 360f) % 360f)
+
+            Log.d("GPS_APP", "Auto-switched to previous waypoint: $prevWp (index: ${selectedIndex})")
+            return
+        }
+
+        // Normal bearing calculation for current waypoint
+        var bearing = loc.bearingTo(wpLocation)
         if (bearing < 0f) bearing += 360f
-
-        // Adjust by device heading so 0° is "straight ahead" on the compass
         val relative = bearing - azimuth.value
         waypointRelativeBearing.value = ((relative + 360f) % 360f)
     }
@@ -180,6 +206,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     private fun clearWaypoints() {
         waypoints.clear()
         selectedWaypoint = null
+        selectedIndex = null
         waypointRelativeBearing.value = null
         waypointDistanceMeters.value = null
         waypointDistances.clear()
