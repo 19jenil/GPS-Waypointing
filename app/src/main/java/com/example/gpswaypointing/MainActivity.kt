@@ -42,8 +42,14 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     // Currently selected waypoint (Task 10)
     private var selectedWaypoint: Waypoint? = null
 
-    // NEW FOR TASK 11: relative bearing from user to selected waypoint
+    // Task 11: relative bearing from user to selected waypoint
     private var waypointRelativeBearing = mutableStateOf<Float?>(null)
+
+    // Task 12: distance from user to selected waypoint (metres)
+    private var waypointDistanceMeters = mutableStateOf<Float?>(null)
+
+    // Task 13: per-waypoint distances (metres)
+    private val waypointDistances = mutableMapOf<Int, Float>()
 
     // Name of the file to save data to
     private val FILENAME = "waypoints.txt"
@@ -81,12 +87,17 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // UPDATED CALL: now also passes waypointBearing
+                    // Pass bearing, distance and nearby waypoints to the UI (Tasks 11–13)
                     GPSApplication(
                         azimuth = azimuth.value,
                         waypoints = waypoints,
                         selectedWaypoint = selectedWaypoint,
                         waypointBearing = waypointRelativeBearing.value,
+                        waypointDistanceMeters = waypointDistanceMeters.value,
+                        nearbyWaypoints = waypoints.filter { wp ->
+                            val d = waypointDistances[wp.id]
+                            d != null && d <= 500f        // within 500 m
+                        },
                         onTrackingChanged = { shouldTrack ->
                             if (shouldTrack) {
                                 startLocationTracking()
@@ -103,7 +114,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                         onWaypointSelected = { wp ->
                             selectedWaypoint = wp
                             Log.d("GPS_APP", "Selected waypoint: $wp")
-                            updateWaypointBearing()   // recompute direction to this waypoint
+                            updateWaypointBearingAndDistance()   // recompute for this waypoint
                         }
                     )
                 }
@@ -111,12 +122,13 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         }
     }
 
-    // --- TASK 11: compute bearing from user to selected waypoint ---
-    private fun updateWaypointBearing() {
+    // --- TASK 11 & 12: compute bearing and distance to selected waypoint ---
+    private fun updateWaypointBearingAndDistance() {
         val loc = currentLocation
         val wp = selectedWaypoint
         if (loc == null || wp == null) {
             waypointRelativeBearing.value = null
+            waypointDistanceMeters.value = null
             return
         }
 
@@ -124,6 +136,9 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
             latitude = wp.latitude
             longitude = wp.longitude
         }
+
+        // Task 12: distance in metres
+        waypointDistanceMeters.value = loc.distanceTo(wpLocation)
 
         // Bearing from user to waypoint (may be negative)
         var bearing = loc.bearingTo(wpLocation)  // degrees from north, clockwise
@@ -144,6 +159,16 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                 longitude = location.longitude
             )
             waypoints.add(newWaypoint)
+
+            // Task 13: set its distance immediately if we already know user location
+            currentLocation?.let { loc ->
+                val wpLoc = Location("wp").apply {
+                    latitude = newWaypoint.latitude
+                    longitude = newWaypoint.longitude
+                }
+                waypointDistances[newWaypoint.id] = loc.distanceTo(wpLoc)
+            }
+
             saveWaypointsToFile()
             Log.d("GPS_APP", "Waypoint Added: $newWaypoint")
         } else {
@@ -156,6 +181,8 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
         waypoints.clear()
         selectedWaypoint = null
         waypointRelativeBearing.value = null
+        waypointDistanceMeters.value = null
+        waypointDistances.clear()
         try {
             openFileOutput(FILENAME, Context.MODE_PRIVATE).use {
                 it.write("".toByteArray())
@@ -244,7 +271,17 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     override fun onLocationChanged(location: Location) {
         currentLocation = location
         Log.d("GPS_APP", "New Location: ${location.latitude}, ${location.longitude}")
-        updateWaypointBearing()   // keep direction updated as user moves
+        updateWaypointBearingAndDistance()   // update direction & distance as user moves
+
+        // Task 13: update all waypoint distances
+        waypointDistances.clear()
+        for (wp in waypoints) {
+            val wpLoc = Location("wp").apply {
+                latitude = wp.latitude
+                longitude = wp.longitude
+            }
+            waypointDistances[wp.id] = location.distanceTo(wpLoc)
+        }
     }
 
     override fun onProviderEnabled(provider: String) {}
@@ -273,7 +310,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             SensorManager.getOrientation(rotationMatrix, orientationAngles)
             azimuth.value = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
-            updateWaypointBearing()   // bearing depends on azimuth as well
+            updateWaypointBearingAndDistance()   // bearing depends on azimuth as well
         }
     }
 
