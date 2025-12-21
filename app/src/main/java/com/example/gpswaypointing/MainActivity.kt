@@ -37,7 +37,13 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     private var currentLocation: Location? = null
 
     // List to store saved waypoints
-    private val waypoints = mutableListOf<Waypoint>()
+    private val waypoints = mutableStateListOf<Waypoint>()
+
+    // Currently selected waypoint (Task 10)
+    private var selectedWaypoint: Waypoint? = null
+
+    // NEW FOR TASK 11: relative bearing from user to selected waypoint
+    private var waypointRelativeBearing = mutableStateOf<Float?>(null)
 
     // Name of the file to save data to
     private val FILENAME = "waypoints.txt"
@@ -75,9 +81,12 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // UPDATED CALL for Task 9: Now includes onClearWaypoints
+                    // UPDATED CALL: now also passes waypointBearing
                     GPSApplication(
                         azimuth = azimuth.value,
+                        waypoints = waypoints,
+                        selectedWaypoint = selectedWaypoint,
+                        waypointBearing = waypointRelativeBearing.value,
                         onTrackingChanged = { shouldTrack ->
                             if (shouldTrack) {
                                 startLocationTracking()
@@ -88,14 +97,41 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
                         onAddWaypoint = {
                             addWaypoint()
                         },
-                        // NEW CALLBACK: Handle clearing waypoints
                         onClearWaypoints = {
                             clearWaypoints()
+                        },
+                        onWaypointSelected = { wp ->
+                            selectedWaypoint = wp
+                            Log.d("GPS_APP", "Selected waypoint: $wp")
+                            updateWaypointBearing()   // recompute direction to this waypoint
                         }
                     )
                 }
             }
         }
+    }
+
+    // --- TASK 11: compute bearing from user to selected waypoint ---
+    private fun updateWaypointBearing() {
+        val loc = currentLocation
+        val wp = selectedWaypoint
+        if (loc == null || wp == null) {
+            waypointRelativeBearing.value = null
+            return
+        }
+
+        val wpLocation = Location("waypoint").apply {
+            latitude = wp.latitude
+            longitude = wp.longitude
+        }
+
+        // Bearing from user to waypoint (may be negative)
+        var bearing = loc.bearingTo(wpLocation)  // degrees from north, clockwise
+        if (bearing < 0f) bearing += 360f
+
+        // Adjust by device heading so 0° is "straight ahead" on the compass
+        val relative = bearing - azimuth.value
+        waypointRelativeBearing.value = ((relative + 360f) % 360f)
     }
 
     // --- FUNCTION for Task 7 & 8 ---
@@ -117,10 +153,9 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
 
     // --- NEW FUNCTION for Task 9: Clear Data ---
     private fun clearWaypoints() {
-        // 1. Clear memory list
         waypoints.clear()
-
-        // 2. Clear file (overwrite with empty string)
+        selectedWaypoint = null
+        waypointRelativeBearing.value = null
         try {
             openFileOutput(FILENAME, Context.MODE_PRIVATE).use {
                 it.write("".toByteArray())
@@ -209,6 +244,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
     override fun onLocationChanged(location: Location) {
         currentLocation = location
         Log.d("GPS_APP", "New Location: ${location.latitude}, ${location.longitude}")
+        updateWaypointBearing()   // keep direction updated as user moves
     }
 
     override fun onProviderEnabled(provider: String) {}
@@ -237,6 +273,7 @@ class MainActivity : ComponentActivity(), SensorEventListener, LocationListener 
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             SensorManager.getOrientation(rotationMatrix, orientationAngles)
             azimuth.value = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
+            updateWaypointBearing()   // bearing depends on azimuth as well
         }
     }
 

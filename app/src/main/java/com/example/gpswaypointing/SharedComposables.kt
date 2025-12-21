@@ -2,7 +2,10 @@ package com.example.gpswaypointing
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -19,17 +22,19 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 
-// UPDATE: Added 'onClearWaypoints' parameter to the function signature
 @Composable
 fun GPSApplication(
     azimuth: Float,
+    waypoints: List<Waypoint>,
+    selectedWaypoint: Waypoint?,
+    waypointBearing: Float?,                 // NEW for Task 11
     onTrackingChanged: (Boolean) -> Unit,
     onAddWaypoint: () -> Unit,
-    onClearWaypoints: () -> Unit // New callback for Task 9
+    onClearWaypoints: () -> Unit,
+    onWaypointSelected: (Waypoint) -> Unit
 ) {
 
     val isTracking = remember { mutableStateOf(false) }
-    // STATE: Controls whether the delete confirmation dialog is shown
     val showDeleteDialog = remember { mutableStateOf(false) }
 
     Column(
@@ -37,14 +42,16 @@ fun GPSApplication(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        CompassCanvas(azimuth)
+        // PASS bearing into canvas
+        CompassCanvas(
+            azimuth = azimuth,
+            waypointBearing = waypointBearing
+        )
 
         // Start/Stop Tracking Button
         Button(
             onClick = {
-                // Toggle state
                 isTracking.value = !isTracking.value
-                // CALL THE CALLBACK: This sends the signal to MainActivity
                 onTrackingChanged(isTracking.value)
             },
             modifier = Modifier.padding(top = 24.dp)
@@ -52,36 +59,59 @@ fun GPSApplication(
             Text(text = if (isTracking.value) "Stop Tracking" else "Start Tracking")
         }
 
-        // Only show these buttons if we are currently tracking
         if (isTracking.value) {
-
             // TASK 7: Add Waypoint Button
             Button(
-                onClick = {
-                    onAddWaypoint()
-                },
+                onClick = { onAddWaypoint() },
                 modifier = Modifier.padding(top = 16.dp)
             ) {
                 Text(text = "Add Waypoint")
             }
 
-            // --- NEW TASK 9: Clear Waypoints Button ---
+            // TASK 9: Clear Waypoints Button
             Button(
-                onClick = {
-                    // Show dialog instead of deleting immediately
-                    showDeleteDialog.value = true
-                },
+                onClick = { showDeleteDialog.value = true },
                 modifier = Modifier.padding(top = 8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Red // Red color to indicate destructive action
+                    containerColor = Color.Red
                 )
             ) {
                 Text(text = "Clear Waypoints")
             }
         }
+
+        // TASK 10: Waypoint selection list
+        if (waypoints.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(text = "Select Waypoint:")
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .padding(horizontal = 32.dp)
+            ) {
+                items(waypoints) { wp ->
+                    val isSelected = (wp == selectedWaypoint)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onWaypointSelected(wp) }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = wp.name)
+                        if (isSelected) {
+                            Text(text = "●", color = Color.Green)
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // --- NEW TASK 9: Confirmation Dialog ---
+    // Confirmation Dialog (Task 9)
     if (showDeleteDialog.value) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog.value = false },
@@ -90,8 +120,8 @@ fun GPSApplication(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onClearWaypoints() // Perform the actual delete
-                        showDeleteDialog.value = false // Close dialog
+                        onClearWaypoints()
+                        showDeleteDialog.value = false
                     }
                 ) {
                     Text("Yes, Delete")
@@ -109,7 +139,10 @@ fun GPSApplication(
 }
 
 @Composable
-fun CompassCanvas(azimuth: Float) {
+fun CompassCanvas(
+    azimuth: Float,
+    waypointBearing: Float?          // NEW for Task 11
+) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth(0.8f)
@@ -122,12 +155,10 @@ fun CompassCanvas(azimuth: Float) {
         val center = Offset(width / 2, height / 2)
         val radius = size.minDimension / 2.5f
 
-
-        // ROTATE THE ENTIRE CANVAS
-        // We invert the azimuth (-) so the compass rotates opposite to the user
+        // Rotate compass according to device heading
         rotate(degrees = -azimuth, pivot = center) {
 
-            // Draw North (Highlighted Red)
+            // Compass letters
             drawContext.canvas.nativeCanvas.apply {
                 drawText(
                     "N",
@@ -142,7 +173,6 @@ fun CompassCanvas(azimuth: Float) {
                 )
             }
 
-            // Draw South
             drawContext.canvas.nativeCanvas.apply {
                 drawText(
                     "S",
@@ -156,7 +186,6 @@ fun CompassCanvas(azimuth: Float) {
                 )
             }
 
-            // Draw East
             drawContext.canvas.nativeCanvas.apply {
                 drawText(
                     "E",
@@ -170,7 +199,6 @@ fun CompassCanvas(azimuth: Float) {
                 )
             }
 
-            // Draw West
             drawContext.canvas.nativeCanvas.apply {
                 drawText(
                     "W",
@@ -181,6 +209,21 @@ fun CompassCanvas(azimuth: Float) {
                         textSize = 60f
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
+                )
+            }
+
+            // --- TASK 11: draw waypoint direction arrow ---
+            if (waypointBearing != null) {
+                val arrowLength = radius * 0.8f
+                val angleRad = Math.toRadians(waypointBearing.toDouble())
+                val endX = center.x + (arrowLength * Math.sin(angleRad)).toFloat()
+                val endY = center.y - (arrowLength * Math.cos(angleRad)).toFloat()
+
+                drawLine(
+                    color = Color.Blue,
+                    start = center,
+                    end = Offset(endX, endY),
+                    strokeWidth = 8f
                 )
             }
         }
