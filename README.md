@@ -53,19 +53,7 @@ The app enables users to save multiple waypoints, view nearby locations, calcula
 
 ---
 
-## Screenshots
 
-### Main Navigation Screen
-
-![Main Screen](screenshots/main-screen.png)
-
-### Waypoint Management
-
-![Waypoint Screen](screenshots/waypoint-screen.png)
-
-### Compass Navigation
-
-![Compass Screen](screenshots/compass-screen.png)
 
 ---
 
