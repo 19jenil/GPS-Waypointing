@@ -55,8 +55,6 @@ The app enables users to save multiple waypoints, view nearby locations, calcula
 
 
 
----
-
 ## Technology Stack
 
 | Technology        | Purpose                 |
